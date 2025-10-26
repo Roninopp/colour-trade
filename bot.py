@@ -103,8 +103,10 @@ async def send_prediction_job(context: ContextTypes.DEFAULT_TYPE):
     # If queue is empty (e.g., timing mismatch), force-generate a new one.
     if not state.get('prediction_queue'):
         logger.warning(f"Chat {chat_id}: Prediction queue was empty. Forcing new trend generation.")
-        # We can't await here, so we call it directly (it's safe)
-        await generate_new_trend_logic(context)
+        # We can't await here, so we create a fake context to pass
+        fake_job = type('FakeJob', (object,), {'chat_id': chat_id})
+        fake_context = type('FakeContext', (object,), {'application': context.application, 'job': fake_job})
+        await generate_new_trend_logic(fake_context)
         state = context.application.bot_data['channel_states'][chat_id] # Re-fetch state
 
     try:
@@ -112,7 +114,9 @@ async def send_prediction_job(context: ContextTypes.DEFAULT_TYPE):
         prediction = state['prediction_queue'].pop(0)
     except (IndexError, AttributeError):
         logger.error(f"Chat {chat_id}: Tried to pop from empty/invalid queue. Forcing new trend.")
-        await generate_new_trend_logic(context)
+        fake_job = type('FakeJob', (object,), {'chat_id': chat_id})
+        fake_context = type('FakeContext', (object,), {'application': context.application, 'job': fake_job})
+        await generate_new_trend_logic(fake_context)
         state = context.application.bot_data['channel_states'][chat_id]
         prediction = state['prediction_queue'].pop(0)
 
@@ -188,6 +192,10 @@ async def autotrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Invalid Channel ID. Must be `@username` or a number.")
         return
 
+    # Initialize 'channel_states' in bot_data if it's not there
+    if 'channel_states' not in context.application.bot_data:
+        context.application.bot_data['channel_states'] = {}
+        
     channel_states = context.application.bot_data['channel_states']
 
     # --- Turn ON ---
@@ -219,7 +227,6 @@ async def autotrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         
         # 1. Run trend generator to populate queue
-        # We need to pass the chat_id to the job context
         fake_job = type('FakeJob', (object,), {'chat_id': chat_id})
         fake_context = type('FakeContext', (object,), {'application': context.application, 'job': fake_job})
         await generate_new_trend_logic(fake_context)
@@ -258,7 +265,7 @@ async def autotrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if stop_all_jobs_for_chat(context, chat_id):
             await update.message.reply_text(f"🛑 **Auto Trade Deactivated** for channel: {target_channel}")
         else:
-            await update.message.reply_text("Could not stop bot. State not found.")
+            await update.message.reply_t("Could not stop bot. State not found.")
             
     else:
         await update.message.reply_text("Usage: `/autotrade <on/off> <@channel_username or channel_id>`", parse_mode='Markdown')
@@ -276,9 +283,6 @@ def main():
     # Create the Application
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
-    # Initialize bot_data
-    application.bot_data['channel_states'] = {}
-
     # Register admin-only commands, usable only in private DMs
     application.add_handler(CommandHandler("start", start_command, filters=filters.ChatType.PRIVATE & admin_filter))
     application.add_handler(CommandHandler("help", start_command, filters=filters.ChatType.PRIVATE & admin_filter))
@@ -294,4 +298,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
