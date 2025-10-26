@@ -20,6 +20,9 @@ ADMIN_USER_ID = 6837532865
 POST_INTERVAL = 60  # 1 minute
 # How often to change the underlying trend (in seconds)
 TREND_CHANGE_INTERVAL = 180  # 3 minutes
+
+# URL for the image you want to send with predictions
+PREDICTION_IMAGE_URL = "https://envs.sh/JN2.jpg"
 # ---------------------
 
 # Enable logging
@@ -160,18 +163,19 @@ async def send_prediction_job(context: ContextTypes.DEFAULT_TYPE):
         )
         keyboard = InlineKeyboardMarkup([[button]])
 
-        # 2. Format the new message text
-        message_text = (
+        # 2. Format the message caption (text that goes with the image)
+        message_caption = (
             f"📈 Trend: {state['current_trend_name']}\n\n"
             f"🤖 Prediction: **{prediction}**"
         )
         
-        # 3. Send message with the button
-        await context.bot.send_message(
-            chat_id=chat_id, 
-            text=message_text, 
+        # 3. Send the image with the caption and button
+        await context.bot.send_photo(
+            chat_id=chat_id,
+            photo=PREDICTION_IMAGE_URL, # The image URL
+            caption=message_caption,    # The text
             parse_mode='Markdown',
-            reply_markup=keyboard  # This adds the button
+            reply_markup=keyboard       # The button
         )
         
     except Exception as e:
@@ -200,9 +204,9 @@ admin_filter = filters.User(user_id=ADMIN_USER_ID)
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a welcome message to the admin."""
     welcome_text = (
-        "**Welcome, Admin! (v2.3)**\n\n"
+        "**Welcome, Admin! (v2.4)**\n\n"
         "This is your Trend Simulator Bot.\n"
-        "I now have new trends: `One-and-Two` and `Alternating-Pairs` for more variety.\n\n"
+        "Predictions now include the BDG Group image.\n\n"
         "**DISCLAIMER:**\n"
         "This bot is for educational purposes. All 'predictions' are **randomly generated**.\n"
         "**How to Use:**\n"
@@ -334,10 +338,9 @@ def main():
     application.add_handler(MessageHandler(filters.ChatType.PRIVATE & (~admin_filter), unauthorized_user_handler))
 
     # Start the Bot
-    logger.info(f"Bot starting... (v2.3 more trends)")
+    logger.info(f"Bot starting... (v2.4 with image)")
     logger.info(f"Admin user ID set to: {ADMIN_USER_ID}")
     application.run_polling()
 
 if __name__ == '__main__':
     main()
-
