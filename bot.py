@@ -40,7 +40,7 @@ async def generate_new_trend_logic(context: ContextTypes.DEFAULT_TYPE):
     """
     chat_id = context.job.chat_id
     
-    if chat_id not in context.application.bot_data['channel_states']:
+    if 'channel_states' not in context.application.bot_data or chat_id not in context.application.bot_data['channel_states']:
         logger.warning(f"generate_new_trend_logic called for {chat_id} but state not found. Stopping.")
         return
 
@@ -93,7 +93,7 @@ async def send_prediction_job(context: ContextTypes.DEFAULT_TYPE):
     """
     chat_id = context.job.chat_id
     
-    if chat_id not in context.application.bot_data['channel_states']:
+    if 'channel_states' not in context.application.bot_data or chat_id not in context.application.bot_data['channel_states']:
         logger.error(f"send_prediction_job running for {chat_id} but state does not exist. Removing job.")
         context.job.schedule_removal()
         return
@@ -265,7 +265,7 @@ async def autotrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if stop_all_jobs_for_chat(context, chat_id):
             await update.message.reply_text(f"🛑 **Auto Trade Deactivated** for channel: {target_channel}")
         else:
-            await update.message.reply_t("Could not stop bot. State not found.")
+            await update.message.reply_text("Could not stop bot. State not found.")
             
     else:
         await update.message.reply_text("Usage: `/autotrade <on/off> <@channel_username or channel_id>`", parse_mode='Markdown')
@@ -298,3 +298,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
