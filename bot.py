@@ -46,13 +46,28 @@ async def generate_new_trend_logic(context: ContextTypes.DEFAULT_TYPE):
 
     state = context.application.bot_data['channel_states'][chat_id]
     
+    # --- NEW TRENDS ADDED HERE ---
     # Define the possible trends
-    trends = ["Dragon", "Zig-Zag", "Double-Up", "Random-Flip"]
+    trends = [
+        "Dragon",            # A, A, A
+        "Zig-Zag",           # A, B, A
+        "Two-and-One",       # A, A, B  (Renamed from Double-Up)
+        "One-and-Two",       # A, B, B  (NEW!)
+        "Alternating-Pairs", # A, A, B  (This logic will make the *next* trend S, S, B) (NEW!)
+        "Random-Flip"        # ?, ?, ?
+    ]
     chosen_trend = random.choice(trends)
     
     state['current_trend_name'] = chosen_trend
     queue = []
-    last_val = state.get('last_value', "Small 🟢") # Get last value or default
+    
+    # Get last value or default
+    # If the last trend was "Alternating-Pairs", we force the next value to be the opposite.
+    if state.get('last_trend') == "Alternating-Pairs":
+        last_val = "Big 🔴" if state.get('last_value') == "Small 🟢" else "Small 🟢"
+    else:
+        last_val = state.get('last_value', "Small 🟢")
+
     
     # Generate the 3 predictions for the next 3 minutes
     if chosen_trend == "Dragon":
@@ -64,13 +79,28 @@ async def generate_new_trend_logic(context: ContextTypes.DEFAULT_TYPE):
         val1 = "Big 🔴" if last_val == "Small 🟢" else "Small 🟢"
         val2 = "Small 🟢" if val1 == "Big 🔴" else "Big 🔴"
         queue = [val1, val2, val1]
-        last_val = val1
+        last_val = val1 # The last value is A
         
-    elif chosen_trend == "Double-Up":
+    elif chosen_trend == "Two-and-One": # (Renamed from Double-Up)
         val1 = "Big 🔴" if random.random() > 0.5 else "Small 🟢"
         val2 = "Small 🟢" if val1 == "Big 🔴" else "Big 🔴"
         queue = [val1, val1, val2]
-        last_val = val2
+        last_val = val2 # The last value is B
+
+    elif chosen_trend == "One-and-Two": # (NEW!)
+        val1 = "Big 🔴" if random.random() > 0.5 else "Small 🟢"
+        val2 = "Small 🟢" if val1 == "Big 🔴" else "Big 🔴"
+        queue = [val1, val2, val2]
+        last_val = val2 # The last value is B
+        
+    elif chosen_trend == "Alternating-Pairs": # (NEW!)
+        # This will be e.g. B, B, S. We force last_val to be S.
+        # The next time this job runs, it will see the last trend was "Alternating-Pairs"
+        # and force the start of the next trend to be B.
+        val1 = last_val # Start with the last value
+        val2 = "Small 🟢" if val1 == "Big 🔴" else "Big 🔴" # The opposite
+        queue = [val1, val1, val2] # A, A, B
+        last_val = val2 # The last value is B (the single one)
 
     elif chosen_trend == "Random-Flip":
         val1 = "Big 🔴" if random.random() > 0.5 else "Small 🟢"
@@ -81,6 +111,7 @@ async def generate_new_trend_logic(context: ContextTypes.DEFAULT_TYPE):
 
     state['prediction_queue'] = queue
     state['last_value'] = last_val
+    state['last_trend'] = chosen_trend # Store this trend for the next run
     context.application.bot_data['channel_states'][chat_id] = state
     
     logger.info(f"Chat {chat_id}: New trend selected: {chosen_trend}. Queue: {queue}")
@@ -119,8 +150,6 @@ async def send_prediction_job(context: ContextTypes.DEFAULT_TYPE):
         await generate_new_trend_logic(fake_context)
         state = context.application.bot_data['channel_states'][chat_id]
         prediction = state['prediction_queue'].pop(0)
-
-    # We no longer use the period number, so it has been removed from the state.
     
     # Format and send message
     try:
@@ -171,9 +200,9 @@ admin_filter = filters.User(user_id=ADMIN_USER_ID)
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a welcome message to the admin."""
     welcome_text = (
-        "**Welcome, Admin! (v2.2)**\n\n"
+        "**Welcome, Admin! (v2.3)**\n\n"
         "This is your Trend Simulator Bot.\n"
-        "This version fixes the double underscore typo.\n\n"
+        "I now have new trends: `One-and-Two` and `Alternating-Pairs` for more variety.\n\n"
         "**DISCLAIMER:**\n"
         "This bot is for educational purposes. All 'predictions' are **randomly generated**.\n"
         "**How to Use:**\n"
@@ -220,11 +249,7 @@ async def autotrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat = await context.bot.get_chat(chat_id)
             channel_name = chat.title
             
-            # ---------------------
-            # THE FIX IS HERE
-            # ---------------------
-            admins = await context.bot.get_chat_administrators(chat_id) # Was get__chat_administrators
-            # ---------------------
+            admins = await context.bot.get_chat_administrators(chat_id)
             
             if not any(admin.user.id == context.bot.id for admin in admins):
                  await update.message.reply_text(f"❌ Error: I am not an administrator in '{channel_name}'. Please add me as an admin first.")
@@ -239,7 +264,8 @@ async def autotrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Initialize state (no more period number)
         channel_states[chat_id] = {
             'last_value': "Small 🟢",
-            'prediction_queue': []
+            'prediction_queue': [],
+            'last_trend': None
         }
         
         # 1. Run trend generator to populate queue
@@ -308,7 +334,7 @@ def main():
     application.add_handler(MessageHandler(filters.ChatType.PRIVATE & (~admin_filter), unauthorized_user_handler))
 
     # Start the Bot
-    logger.info(f"Bot starting... (v2.2 typo fix)")
+    logger.info(f"Bot starting... (v2.3 more trends)")
     logger.info(f"Admin user ID set to: {ADMIN_USER_ID}")
     application.run_polling()
 
