@@ -1,7 +1,7 @@
 import logging
 import os
 import random
-from telegram import Update, Bot
+from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -120,19 +120,30 @@ async def send_prediction_job(context: ContextTypes.DEFAULT_TYPE):
         state = context.application.bot_data['channel_states'][chat_id]
         prediction = state['prediction_queue'].pop(0)
 
-    # Update state
-    state['period'] += 1
-    context.application.bot_data['channel_states'][chat_id] = state
+    # We no longer use the period number, so it has been removed from the state.
     
     # Format and send message
     try:
-        message_text = (
-            f"--- Period {state['period']} ---\n"
-            f"📈 Trend: {state['current_trend_name']}\n\n"
-            f"🤖 Prediction: **{prediction}**\n\n"
-            f"⚠️ *Disclaimer: For educational/entertainment purposes only.*"
+        # 1. Define the button
+        button = InlineKeyboardButton(
+            text="𝐇𝐎𝐖 𝐓𝐎 𝐏𝐋𝐀𝐘",  # Using the exact text you provided
+            url="https://t.me/goa_games_gods/21565"
         )
-        await context.bot.send_message(chat_id=chat_id, text=message_text, parse_mode='Markdown')
+        keyboard = InlineKeyboardMarkup([[button]])
+
+        # 2. Format the new message text
+        message_text = (
+            f"📈 Trend: {state['current_trend_name']}\n\n"
+            f"🤖 Prediction: **{prediction}**"
+        )
+        
+        # 3. Send message with the button
+        await context.bot.send_message(
+            chat_id=chat_id, 
+            text=message_text, 
+            parse_mode='Markdown',
+            reply_markup=keyboard  # This adds the button
+        )
         
     except Exception as e:
         logger.error(f"Failed to send message to {chat_id}: {e}")
@@ -160,12 +171,12 @@ admin_filter = filters.User(user_id=ADMIN_USER_ID)
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a welcome message to the admin."""
     welcome_text = (
-        "**Welcome, Admin! (v2.0)**\n\n"
-        "This is your Trend Simulator Bot, now on the new library.\n"
-        "This version IS compatible with Python 3.12 and should work.\n\n"
+        "**Welcome, Admin! (v2.1)**\n\n"
+        "This is your Trend Simulator Bot.\n"
+        "Messages now have the 'How To Play' button and no period number.\n\n"
         "**DISCLAIMER:**\n"
         "This bot is for educational purposes. All 'predictions' are **randomly generated**.\n"
-        "**How to Use (Same as before):**\n"
+        "**How to Use:**\n"
         "1. Add bot as **Admin** to your channel.\n"
         "2. Send me commands here in our DM:\n\n"
         "`/autotrade on @mychannel`\n"
@@ -208,7 +219,7 @@ async def autotrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             chat = await context.bot.get_chat(chat_id)
             channel_name = chat.title
-            admins = await context.bot.get_chat_administrators(chat_id)
+            admins = await context.bot.get__chat_administrators(chat_id)
             if not any(admin.user.id == context.bot.id for admin in admins):
                  await update.message.reply_text(f"❌ Error: I am not an administrator in '{channel_name}'. Please add me as an admin first.")
                  return
@@ -219,9 +230,8 @@ async def autotrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(f"Verifying... please wait.")
         
-        # Initialize state
+        # Initialize state (no more period number)
         channel_states[chat_id] = {
-            'period': 20240101001,
             'last_value': "Small 🟢",
             'prediction_queue': []
         }
@@ -292,9 +302,10 @@ def main():
     application.add_handler(MessageHandler(filters.ChatType.PRIVATE & (~admin_filter), unauthorized_user_handler))
 
     # Start the Bot
-    logger.info(f"Bot starting... (v2.0 for Python 3.12)")
+    logger.info(f"Bot starting... (v2.1 with button)")
     logger.info(f"Admin user ID set to: {ADMIN_USER_ID}")
     application.run_polling()
 
 if __name__ == '__main__':
     main()
+
