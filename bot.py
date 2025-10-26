@@ -171,9 +171,9 @@ admin_filter = filters.User(user_id=ADMIN_USER_ID)
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a welcome message to the admin."""
     welcome_text = (
-        "**Welcome, Admin! (v2.1)**\n\n"
+        "**Welcome, Admin! (v2.2)**\n\n"
         "This is your Trend Simulator Bot.\n"
-        "Messages now have the 'How To Play' button and no period number.\n\n"
+        "This version fixes the double underscore typo.\n\n"
         "**DISCLAIMER:**\n"
         "This bot is for educational purposes. All 'predictions' are **randomly generated**.\n"
         "**How to Use:**\n"
@@ -219,7 +219,13 @@ async def autotrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             chat = await context.bot.get_chat(chat_id)
             channel_name = chat.title
-            admins = await context.bot.get__chat_administrators(chat_id)
+            
+            # ---------------------
+            # THE FIX IS HERE
+            # ---------------------
+            admins = await context.bot.get_chat_administrators(chat_id) # Was get__chat_administrators
+            # ---------------------
+            
             if not any(admin.user.id == context.bot.id for admin in admins):
                  await update.message.reply_text(f"❌ Error: I am not an administrator in '{channel_name}'. Please add me as an admin first.")
                  return
@@ -302,7 +308,7 @@ def main():
     application.add_handler(MessageHandler(filters.ChatType.PRIVATE & (~admin_filter), unauthorized_user_handler))
 
     # Start the Bot
-    logger.info(f"Bot starting... (v2.1 with button)")
+    logger.info(f"Bot starting... (v2.2 typo fix)")
     logger.info(f"Admin user ID set to: {ADMIN_USER_ID}")
     application.run_polling()
 
