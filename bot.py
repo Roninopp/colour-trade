@@ -1,13 +1,15 @@
 import logging
 import os
 import random
+import re # We need to import 're' for parsing the button text
 from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
     ContextTypes,
     filters,
-    MessageHandler
+    MessageHandler,
+    CallbackQueryHandler # This is new
 )
 
 # --- Configuration ---
@@ -23,6 +25,9 @@ TREND_CHANGE_INTERVAL = 180  # 3 minutes
 
 # URL for the image you want to send with predictions
 PREDICTION_IMAGE_URL = "https://envs.sh/JN2.jpg"
+
+# Emojis for the reaction buttons
+REACTIONS = ["😍", "😢", "🤩", "🤑", "🧡", "💸"]
 # ---------------------
 
 # Enable logging
@@ -156,26 +161,39 @@ async def send_prediction_job(context: ContextTypes.DEFAULT_TYPE):
     
     # Format and send message
     try:
-        # 1. Define the button
-        button = InlineKeyboardButton(
-            text="𝐇𝐎𝐖 𝐓𝐎 𝐏𝐋𝐀𝐘",  # Using the exact text you provided
+        # 1. Create the reaction buttons, all with a count of 0
+        reaction_buttons = []
+        for emoji in REACTIONS:
+            # The text is "😍 (0)" and the data is just "😍"
+            reaction_buttons.append(InlineKeyboardButton(text=f"{emoji} (0)", callback_data=emoji))
+
+        # 2. Define the "How to Play" button
+        how_to_play_button = InlineKeyboardButton(
+            text="𝐇𝐎𝐖 𝐓𝐎 𝐏𝐋𝐀𝐘",
             url="https://t.me/goa_games_gods/21565"
         )
-        keyboard = InlineKeyboardMarkup([[button]])
+        
+        # 3. Arrange buttons in a grid (3x2)
+        keyboard = [
+            [reaction_buttons[0], reaction_buttons[1], reaction_buttons[2]], # 😍 😢 🤩
+            [reaction_buttons[3], reaction_buttons[4], reaction_buttons[5]], # 🤑 🧡 💸
+            [how_to_play_button] # 4th row
+        ]
+        markup = InlineKeyboardMarkup(keyboard)
 
-        # 2. Format the message caption (text that goes with the image)
+        # 4. Format the message caption (text that goes with the image)
         message_caption = (
             f"📈 Trend: {state['current_trend_name']}\n\n"
             f"🤖 Prediction: **{prediction}**"
         )
         
-        # 3. Send the image with the caption and button
+        # 5. Send the image with the caption and button
         await context.bot.send_photo(
             chat_id=chat_id,
             photo=PREDICTION_IMAGE_URL, # The image URL
             caption=message_caption,    # The text
             parse_mode='Markdown',
-            reply_markup=keyboard       # The button
+            reply_markup=markup       # The button
         )
         
     except Exception as e:
@@ -183,6 +201,67 @@ async def send_prediction_job(context: ContextTypes.DEFAULT_TYPE):
         if "chat not found" in str(e).lower() or "bot was blocked" in str(e).lower():
             logger.warning(f"Bot probably kicked from {chat_id}. Stopping all jobs for this chat.")
             stop_all_jobs_for_chat(context, chat_id)
+
+async def reaction_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    This is the new function that handles when a user clicks a reaction button.
+    """
+    query = update.callback_query
+    # Immediately answer the button press, so the user's app doesn't show a loading icon
+    await query.answer() 
+    
+    clicked_emoji = query.data
+    
+    # Make sure this is a reaction button, not some other button
+    if clicked_emoji not in REACTIONS:
+        return
+
+    try:
+        current_keyboard = query.message.reply_markup.inline_keyboard
+        new_reaction_buttons = []
+        how_to_play_button = None
+
+        # Loop over all buttons to find the one that was clicked and update its count
+        for row in current_keyboard:
+            for button in row:
+                if button.url:
+                    # This is the "HOW TO PLAY" button, just save it
+                    how_to_play_button = button
+                    continue
+                
+                # This is a reaction button
+                button_emoji = button.callback_data
+                button_text = button.text
+                
+                # Parse the text (e.g., "😍 (5)") to get the count
+                match = re.search(r"\((\d+)\)", button_text)
+                count = int(match.group(1)) if match else 0
+                
+                # If this is the button that was clicked, add 1 to the count
+                if button_emoji == clicked_emoji:
+                    count += 1
+                    
+                # Create the new button text
+                new_text = f"{button_emoji} ({count})"
+                new_reaction_buttons.append(InlineKeyboardButton(text=new_text, callback_data=button_emoji))
+
+        # Re-build the keyboard layout with the new buttons
+        new_keyboard_layout = [
+            [new_reaction_buttons[0], new_reaction_buttons[1], new_reaction_buttons[2]],
+            [new_reaction_buttons[3], new_reaction_buttons[4], new_reaction_buttons[5]],
+        ]
+        if how_to_play_button:
+            new_keyboard_layout.append([how_to_play_button])
+            
+        new_markup = InlineKeyboardMarkup(new_keyboard_layout)
+        
+        # Edit the original message to show the new keyboard
+        await query.edit_message_reply_markup(reply_markup=new_markup)
+        
+    except Exception as e:
+        # This can fail if two people click at the exact same time. It's okay.
+        logger.warning(f"Failed to update reaction count: {e}")
+
 
 def stop_all_jobs_for_chat(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
     """Helper function to stop and remove all jobs and state for a chat."""
@@ -204,9 +283,9 @@ admin_filter = filters.User(user_id=ADMIN_USER_ID)
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a welcome message to the admin."""
     welcome_text = (
-        "**Welcome, Admin! (v2.4)**\n\n"
+        "**Welcome, Admin! (v2.5)**\n\n"
         "This is your Trend Simulator Bot.\n"
-        "Predictions now include the BDG Group image.\n\n"
+        "Predictions now include counting reaction buttons.\n\n"
         "**DISCLAIMER:**\n"
         "This bot is for educational purposes. All 'predictions' are **randomly generated**.\n"
         "**How to Use:**\n"
@@ -336,11 +415,17 @@ def main():
 
     # Register a handler for any other message from non-admins in DMs
     application.add_handler(MessageHandler(filters.ChatType.PRIVATE & (~admin_filter), unauthorized_user_handler))
+    
+    # --- THIS IS THE NEW HANDLER ---
+    # It will listen for *all* button presses from *all* users
+    application.add_handler(CallbackQueryHandler(reaction_handler))
+    # ---
 
     # Start the Bot
-    logger.info(f"Bot starting... (v2.4 with image)")
+    logger.info(f"Bot starting... (v2.5 with reactions)")
     logger.info(f"Admin user ID set to: {ADMIN_USER_ID}")
     application.run_polling()
 
 if __name__ == '__main__':
     main()
+
