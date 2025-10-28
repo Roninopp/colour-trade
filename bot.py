@@ -9,7 +9,8 @@ from telegram.ext import (
     ContextTypes,
     filters,
     MessageHandler,
-    CallbackQueryHandler # This is new
+    CallbackQueryHandler,
+    JobQueue # <-- Import JobQueue
 )
 
 # --- Configuration ---
@@ -268,9 +269,9 @@ def stop_all_jobs_for_chat(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
     bot_data = context.application.bot_data['channel_states']
     if chat_id in bot_data:
         state = bot_data[chat_id]
-        if state.get('post_job'):
+        if 'post_job' in state and state['post_job']:
             state['post_job'].schedule_removal()
-        if state.get('trend_job'):
+        if 'trend_job' in state and state['trend_job']:
             state['trend_job'].schedule_removal()
         del bot_data[chat_id]
         logger.info(f"All jobs and state for chat {chat_id} stopped and removed.")
@@ -283,11 +284,9 @@ admin_filter = filters.User(user_id=ADMIN_USER_ID)
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a welcome message to the admin."""
     welcome_text = (
-        "**Welcome, Admin! (v2.5)**\n\n"
-        "This is your Trend Simulator Bot.\n"
-        "Predictions now include counting reaction buttons.\n\n"
-        "**DISCLAIMER:**\n"
-        "This bot is for educational purposes. All 'predictions' are **randomly generated**.\n"
+        "**Welcome, Admin! (v2.6)**\n\n"
+        "This version fixes the `AttributeError` for the JobQueue.\n"
+        "The bot should now start posting predictions correctly.\n\n"
         "**How to Use:**\n"
         "1. Add bot as **Admin** to your channel.\n"
         "2. Send me commands here in our DM:\n\n"
@@ -405,8 +404,13 @@ def main():
         logging.critical("TELEGRAM_TOKEN is not set! Bot cannot start.")
         return
 
-    # Create the Application
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
+    # ---------------------
+    # THE FIX IS HERE
+    # ---------------------
+    # We must explicitly create a JobQueue and pass it to the builder
+    job_queue = JobQueue()
+    application = Application.builder().token(TELEGRAM_TOKEN).job_queue(job_queue).build()
+    # ---------------------
     
     # Register admin-only commands, usable only in private DMs
     application.add_handler(CommandHandler("start", start_command, filters=filters.ChatType.PRIVATE & admin_filter))
@@ -422,7 +426,7 @@ def main():
     # ---
 
     # Start the Bot
-    logger.info(f"Bot starting... (v2.5 with reactions)")
+    logger.info(f"Bot starting... (v2.6 JobQueue fix)")
     logger.info(f"Admin user ID set to: {ADMIN_USER_ID}")
     application.run_polling()
 
