@@ -21,14 +21,32 @@ ADMIN_USER_ID = 6837532865
 
 # How often to send a prediction (in seconds)
 POST_INTERVAL = 60  # 1 minute
-# How often to change the underlying trend (in seconds)
-TREND_CHANGE_INTERVAL = 180  # 3 minutes
 
 # URL for the image you want to send with predictions
 PREDICTION_IMAGE_URL = "https://envs.sh/JN2.jpg"
 
 # Emojis for the reaction buttons
 REACTIONS = ["😍", "😢", "🤩", "🤑", "🧡", "💸"]
+
+# --- NEW: 8 REAL TRENDS FROM SCREENSHOTS ---
+# All old trend logic is GONE. This is the new brain.
+# I have converted "Big" to "Big 🔴" and "Small" to "Small 🟢"
+
+B = "Big 🔴"
+S = "Small 🟢"
+
+# These are the 8 trends you provided, in order
+# Reading from top (newest) to bottom (oldest)
+PREDEFINED_TRENDS = {
+    "Trend 1": [S, S, B, S, S, S, B, B, B, B],
+    "Trend 2": [S, B, S, B, B, B, S, B, B, B],
+    "Trend 3": [B, B, S, B, S, B, S, S, B, B],
+    "Trend 4": [B, B, B, S, B, B, S, S, B, B],
+    "Trend 5": [S, B, S, B, S, S, B, S, S, S],
+    "Trend 6": [B, B, S, S, S, S, S, B, B, S],
+    "Trend 7": [B, S, S, B, B, B, S, B, S, B],
+    "Trend 8": [S, S, S, B, S, B, S, B, S, S]
+}
 # ---------------------
 
 # Enable logging
@@ -38,98 +56,36 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # This bot uses `context.application.bot_data` to store states
-# It's a dictionary available everywhere
 # `bot_data['channel_states']` will be our dictionary
 
-async def generate_new_trend_logic(context: ContextTypes.DEFAULT_TYPE):
+async def generate_new_trend_logic(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
     """
-    This job runs every 3 minutes.
-    It decides the "trend" for the next 3 posts and creates the 
-    prediction queue.
+    This is no longer a job. It's a helper function that
+    selects one of the 8 predefined trends and sets the queue.
     """
-    chat_id = context.job.chat_id
-    
-    if 'channel_states' not in context.application.bot_data or chat_id not in context.application.bot_data['channel_states']:
-        logger.warning(f"generate_new_trend_logic called for {chat_id} but state not found. Stopping.")
-        return
-
     state = context.application.bot_data['channel_states'][chat_id]
     
-    # --- NEW TRENDS ADDED HERE ---
-    # Define the possible trends
-    trends = [
-        "Dragon",            # A, A, A
-        "Zig-Zag",           # A, B, A
-        "Two-and-One",       # A, A, B  (Renamed from Double-Up)
-        "One-and-Two",       # A, B, B  (NEW!)
-        "Alternating-Pairs", # A, A, B  (This logic will make the *next* trend S, S, B) (NEW!)
-        "Random-Flip"        # ?, ?, ?
-    ]
-    chosen_trend = random.choice(trends)
+    # 1. Randomly pick one of the 8 trend names
+    chosen_trend_name = random.choice(list(PREDEFINED_TRENDS.keys()))
     
-    state['current_trend_name'] = chosen_trend
-    queue = []
+    # 2. Get the full 10-step list of predictions for that trend
+    # We use .copy() to ensure we don't accidentally modify the original
+    prediction_list = PREDEFINED_TRENDS[chosen_trend_name].copy()
     
-    # Get last value or default
-    # If the last trend was "Alternating-Pairs", we force the next value to be the opposite.
-    if state.get('last_trend') == "Alternating-Pairs":
-        last_val = "Big 🔴" if state.get('last_value') == "Small 🟢" else "Small 🟢"
-    else:
-        last_val = state.get('last_value', "Small 🟢")
-
+    # 3. Set the state
+    state['current_trend_name'] = chosen_trend_name
+    state['prediction_queue'] = prediction_list
     
-    # Generate the 3 predictions for the next 3 minutes
-    if chosen_trend == "Dragon":
-        val = "Big 🔴" if random.random() > 0.5 else "Small 🟢"
-        queue = [val, val, val]
-        last_val = val
-        
-    elif chosen_trend == "Zig-Zag":
-        val1 = "Big 🔴" if last_val == "Small 🟢" else "Small 🟢"
-        val2 = "Small 🟢" if val1 == "Big 🔴" else "Big 🔴"
-        queue = [val1, val2, val1]
-        last_val = val1 # The last value is A
-        
-    elif chosen_trend == "Two-and-One": # (Renamed from Double-Up)
-        val1 = "Big 🔴" if random.random() > 0.5 else "Small 🟢"
-        val2 = "Small 🟢" if val1 == "Big 🔴" else "Big 🔴"
-        queue = [val1, val1, val2]
-        last_val = val2 # The last value is B
-
-    elif chosen_trend == "One-and-Two": # (NEW!)
-        val1 = "Big 🔴" if random.random() > 0.5 else "Small 🟢"
-        val2 = "Small 🟢" if val1 == "Big 🔴" else "Big 🔴"
-        queue = [val1, val2, val2]
-        last_val = val2 # The last value is B
-        
-    elif chosen_trend == "Alternating-Pairs": # (NEW!)
-        # This will be e.g. B, B, S. We force last_val to be S.
-        # The next time this job runs, it will see the last trend was "Alternating-Pairs"
-        # and force the start of the next trend to be B.
-        val1 = last_val # Start with the last value
-        val2 = "Small 🟢" if val1 == "Big 🔴" else "Big 🔴" # The opposite
-        queue = [val1, val1, val2] # A, A, B
-        last_val = val2 # The last value is B (the single one)
-
-    elif chosen_trend == "Random-Flip":
-        val1 = "Big 🔴" if random.random() > 0.5 else "Small 🟢"
-        val2 = "Big 🔴" if random.random() > 0.5 else "Small 🟢"
-        val3 = "Big 🔴" if random.random() > 0.5 else "Small 🟢"
-        queue = [val1, val2, val3]
-        last_val = val3
-
-    state['prediction_queue'] = queue
-    state['last_value'] = last_val
-    state['last_trend'] = chosen_trend # Store this trend for the next run
     context.application.bot_data['channel_states'][chat_id] = state
     
-    logger.info(f"Chat {chat_id}: New trend selected: {chosen_trend}. Queue: {queue}")
+    logger.info(f"Chat {chat_id}: New trend selected: {chosen_trend_name}. Queue has 10 items.")
 
 
 async def send_prediction_job(context: ContextTypes.DEFAULT_TYPE):
     """
     This job runs every 1 minute.
     It takes one prediction from the queue and posts it.
+    If the queue is empty, it generates a new trend.
     """
     chat_id = context.job.chat_id
     
@@ -140,26 +96,26 @@ async def send_prediction_job(context: ContextTypes.DEFAULT_TYPE):
 
     state = context.application.bot_data['channel_states'][chat_id]
     
-    # If queue is empty (e.g., timing mismatch), force-generate a new one.
+    # --- NEW LOGIC ---
+    # If the queue is empty, it's time to generate a new 10-step trend.
     if not state.get('prediction_queue'):
-        logger.warning(f"Chat {chat_id}: Prediction queue was empty. Forcing new trend generation.")
-        # We can't await here, so we create a fake context to pass
-        fake_job = type('FakeJob', (object,), {'chat_id': chat_id})
-        fake_context = type('FakeContext', (object,), {'application': context.application, 'job': fake_job})
-        await generate_new_trend_logic(fake_context)
+        logger.warning(f"Chat {chat_id}: Prediction queue is empty. Generating a new 10-step trend.")
+        await generate_new_trend_logic(context, chat_id)
         state = context.application.bot_data['channel_states'][chat_id] # Re-fetch state
 
     try:
         # Get the next prediction from the front of the queue
         prediction = state['prediction_queue'].pop(0)
+        items_left = len(state['prediction_queue'])
+        
     except (IndexError, AttributeError):
+        # This should theoretically not happen, but it's good to be safe
         logger.error(f"Chat {chat_id}: Tried to pop from empty/invalid queue. Forcing new trend.")
-        fake_job = type('FakeJob', (object,), {'chat_id': chat_id})
-        fake_context = type('FakeContext', (object,), {'application': context.application, 'job': fake_job})
-        await generate_new_trend_logic(fake_context)
+        await generate_new_trend_logic(context, chat_id)
         state = context.application.bot_data['channel_states'][chat_id]
         prediction = state['prediction_queue'].pop(0)
-    
+        items_left = len(state['prediction_queue'])
+
     # Format and send message
     try:
         # 1. Create the reaction buttons, all with a count of 0
@@ -184,7 +140,7 @@ async def send_prediction_job(context: ContextTypes.DEFAULT_TYPE):
 
         # 4. Format the message caption (text that goes with the image)
         message_caption = (
-            f"📈 Trend: {state['current_trend_name']}\n\n"
+            f"📈 Trend: {state['current_trend_name']} (Step {10 - items_left}/10)\n\n"
             f"🤖 Prediction: **{prediction}**"
         )
         
@@ -269,10 +225,11 @@ def stop_all_jobs_for_chat(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
     bot_data = context.application.bot_data['channel_states']
     if chat_id in bot_data:
         state = bot_data[chat_id]
+        
+        # --- REMOVED trend_job ---
         if 'post_job' in state and state['post_job']:
             state['post_job'].schedule_removal()
-        if 'trend_job' in state and state['trend_job']:
-            state['trend_job'].schedule_removal()
+        
         del bot_data[chat_id]
         logger.info(f"All jobs and state for chat {chat_id} stopped and removed.")
         return True
@@ -284,12 +241,11 @@ admin_filter = filters.User(user_id=ADMIN_USER_ID)
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a welcome message to the admin."""
     welcome_text = (
-        "**Welcome, Admin! (v2.6)**\n\n"
-        "This version fixes the `AttributeError` for the JobQueue.\n"
-        "The bot should now start posting predictions correctly.\n\n"
+        "**Welcome, Admin! (v2.7)**\n\n"
+        "This version removes all old trends.\n"
+        "It now uses the **8 real 10-step trends** you provided.\n"
+        "It will post one step every minute, then automatically start a new trend.\n\n"
         "**How to Use:**\n"
-        "1. Add bot as **Admin** to your channel.\n"
-        "2. Send me commands here in our DM:\n\n"
         "`/autotrade on @mychannel`\n"
         "`/autotrade off @mychannel`"
     )
@@ -343,19 +299,16 @@ async def autotrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(f"Verifying... please wait.")
         
-        # Initialize state (no more period number)
+        # Initialize state
+        # The queue is left empty on purpose.
+        # send_prediction_job will see it's empty and call generate_new_trend_logic.
         channel_states[chat_id] = {
-            'last_value': "Small 🟢",
-            'prediction_queue': [],
-            'last_trend': None
+            'prediction_queue': []
         }
         
-        # 1. Run trend generator to populate queue
-        fake_job = type('FakeJob', (object,), {'chat_id': chat_id})
-        fake_context = type('FakeContext', (object,), {'application': context.application, 'job': fake_job})
-        await generate_new_trend_logic(fake_context)
-        
-        # 2. Schedule the 1-minute posting job
+        # --- MODIFIED ---
+        # We only schedule ONE job now: the 1-minute posting job.
+        # It will handle its own logic.
         post_job = context.application.job_queue.run_repeating(
             send_prediction_job,
             interval=POST_INTERVAL,
@@ -364,21 +317,11 @@ async def autotrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             name=f"post_{chat_id}"
         )
         
-        # 3. Schedule the 3-minute trend-changing job
-        trend_job = context.application.job_queue.run_repeating(
-            generate_new_trend_logic,
-            interval=TREND_CHANGE_INTERVAL,
-            first=TREND_CHANGE_INTERVAL,
-            chat_id=chat_id,
-            name=f"trend_{chat_id}"
-        )
-        
-        # Store jobs in state
+        # Store job in state
         channel_states[chat_id]['post_job'] = post_job
-        channel_states[chat_id]['trend_job'] = trend_job
         
-        logger.info(f"Started all jobs for chat {chat_id} ({channel_name})")
-        await update.message.reply_text(f"✅ **Auto Trade Activated!**\nI will start posting in **{channel_name}**.")
+        logger.info(f"Started 1-minute post job for chat {chat_id} ({channel_name})")
+        await update.message.reply_text(f"✅ **Auto Trade Activated!**\nI will start posting in **{channel_name}** using the new 8-trend logic.")
 
     # --- Turn OFF ---
     elif command == "off":
@@ -404,13 +347,9 @@ def main():
         logging.critical("TELEGRAM_TOKEN is not set! Bot cannot start.")
         return
 
-    # ---------------------
-    # THE FIX IS HERE
-    # ---------------------
     # We must explicitly create a JobQueue and pass it to the builder
     job_queue = JobQueue()
     application = Application.builder().token(TELEGRAM_TOKEN).job_queue(job_queue).build()
-    # ---------------------
     
     # Register admin-only commands, usable only in private DMs
     application.add_handler(CommandHandler("start", start_command, filters=filters.ChatType.PRIVATE & admin_filter))
@@ -420,16 +359,39 @@ def main():
     # Register a handler for any other message from non-admins in DMs
     application.add_handler(MessageHandler(filters.ChatType.PRIVATE & (~admin_filter), unauthorized_user_handler))
     
-    # --- THIS IS THE NEW HANDLER ---
     # It will listen for *all* button presses from *all* users
     application.add_handler(CallbackQueryHandler(reaction_handler))
-    # ---
 
     # Start the Bot
-    logger.info(f"Bot starting... (v2.6 JobQueue fix)")
+    logger.info(f"Bot starting... (v2.7 - 8 Real Trends)")
     logger.info(f"Admin user ID set to: {ADMIN_USER_ID}")
     application.run_polling()
 
 if __name__ == '__main__':
     main()
+```
 
+### **How to Update Your Bot**
+
+1.  **On GitHub:** Edit your `bot.py` file. Delete all the old code and paste in this new code. Save/Commit the changes.
+2.  **On your VPS:**
+    ```bash
+    # 1. Stop the bot
+    killall screen
+    
+    # 2. Go to the bot's folder
+    cd ~/colour-trade
+    
+    # 3. Pull the new file from GitHub
+    git pull
+    
+    # 4. Activate environment
+    source venv/bin/activate
+    
+    # 5. Run the new bot
+    screen -S tradebot
+    ```
+3.  **Inside `screen`:**
+    ```bash
+    # 6. Run the bot
+    python3 bot.py
