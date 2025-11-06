@@ -245,8 +245,8 @@ admin_filter = filters.User(user_id=ADMIN_USER_ID)
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a welcome message to the admin."""
     welcome_text = (
-        "**Welcome, Admin! (v2.7.2)**\n\n"
-        "This version fixes the dependency conflict and a typo.\n"
+        "**Welcome, Admin! (v2.7.3)**\n\n"
+        "This version fixes the `JobQueue` error.\n"
         "It now uses the **8 real 10-step trends** you provided.\n"
         "It will post one step every minute, then automatically start a new trend.\n\n"
         "**How to Use:**\n"
@@ -283,7 +283,7 @@ async def autotrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- Turn ON ---
     if command == "on":
         if chat_id in channel_states:
-            await update.message.reply_text("Bot is already running in that channel.")
+            await update.message.reply_text("Bot is already running in that. (Or use /autotrade off first)")
             return
 
         # Check if bot is an admin
@@ -357,7 +357,6 @@ def main():
     
     # Register admin-only commands, usable only in private DMs
     application.add_handler(CommandHandler("start", start_command, filters=filters.ChatType.PRIVATE & admin_filter))
-    # --- THIS LINE IS NOW FIXED ---
     application.add_handler(CommandHandler("help", start_command, filters=filters.ChatType.PRIVATE & admin_filter))
     application.add_handler(CommandHandler("autotrade", autotrade_command, filters=filters.ChatType.PRIVATE & admin_filter))
 
@@ -368,7 +367,7 @@ def main():
     application.add_handler(CallbackQueryHandler(reaction_handler))
 
     # Start the Bot
-    logger.info(f"Bot starting... (v2.7.2 - DepFix, TypoFix)")
+    logger.info(f"Bot starting... (v2.7.3 - JobQueue Fix)")
     logger.info(f"Admin user ID set to: {ADMIN_USER_ID}")
     application.run_polling()
 
