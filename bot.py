@@ -245,8 +245,8 @@ admin_filter = filters.User(user_id=ADMIN_USER_ID)
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a welcome message to the admin."""
     welcome_text = (
-        "**Welcome, Admin! (v2.7.1)**\n\n"
-        "This version fixes the `SyntaxError` from my last message.\n"
+        "**Welcome, Admin! (v2.7.2)**\n\n"
+        "This version fixes the dependency conflict and a typo.\n"
         "It now uses the **8 real 10-step trends** you provided.\n"
         "It will post one step every minute, then automatically start a new trend.\n\n"
         "**How to Use:**\n"
@@ -357,7 +357,8 @@ def main():
     
     # Register admin-only commands, usable only in private DMs
     application.add_handler(CommandHandler("start", start_command, filters=filters.ChatType.PRIVATE & admin_filter))
-    application.add_handler(CommandHandler("help", start_command, filters=filters.ChatType.PRIVATE & admin_filder))
+    # --- THIS LINE IS NOW FIXED ---
+    application.add_handler(CommandHandler("help", start_command, filters=filters.ChatType.PRIVATE & admin_filter))
     application.add_handler(CommandHandler("autotrade", autotrade_command, filters=filters.ChatType.PRIVATE & admin_filter))
 
     # Register a handler for any other message from non-admins in DMs
@@ -367,7 +368,7 @@ def main():
     application.add_handler(CallbackQueryHandler(reaction_handler))
 
     # Start the Bot
-    logger.info(f"Bot starting... (v2.7.1 - 8 Real Trends, SyntaxFix)")
+    logger.info(f"Bot starting... (v2.7.2 - DepFix, TypoFix)")
     logger.info(f"Admin user ID set to: {ADMIN_USER_ID}")
     application.run_polling()
 
