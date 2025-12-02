@@ -17,7 +17,7 @@ from telegram.ext import (
 # Hardcoded as requested by the user.
 # WARNING: Do not share this file. Your token is secret.
 TELEGRAM_TOKEN = "7390844050:AAEB5vpDzhRelx0sf_CUGwMgLXd4ZBf61ks"
-ADMIN_USER_ID = 6837532865
+ADMIN_USER_ID = 6837532865 7903835201
 
 # How often to send a prediction (in seconds)
 POST_INTERVAL = 60  # 1 minute
