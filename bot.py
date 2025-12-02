@@ -17,7 +17,9 @@ from telegram.ext import (
 # Hardcoded as requested by the user.
 # WARNING: Do not share this file. Your token is secret.
 TELEGRAM_TOKEN = "7390844050:AAEB5vpDzhRelx0sf_CUGwMgLXd4ZBf61ks"
-ADMIN_USER_ID = 6837532865
+
+# List of Admin IDs
+ADMIN_USER_IDS = [6837532865, 7903835201]
 
 # How often to send a prediction (in seconds)
 POST_INTERVAL = 60  # 1 minute
@@ -28,7 +30,7 @@ PREDICTION_IMAGE_URL = "https://envs.sh/JN2.jpg"
 # Emojis for the reaction buttons
 REACTIONS = ["😍", "😢", "🤩", "🤑", "🧡", "💸"]
 
-# --- TRENDS ---
+# --- NEW: 8 REAL TRENDS FROM YOUR SCREENSHOTS ---
 B = "Big 🔴"
 S = "Small 🟢"
 
@@ -44,29 +46,36 @@ PREDEFINED_TRENDS = {
 }
 # ---------------------
 
+# Enable logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
+# Admin filter check
+admin_filter = filters.User(user_id=ADMIN_USER_IDS)
+
 async def generate_new_trend_logic(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+    """Selects one of the 8 predefined trends and sets the queue."""
     if 'channel_states' not in context.application.bot_data or chat_id not in context.application.bot_data['channel_states']:
-        logger.warning(f"generate_new_trend_logic called for {chat_id} but state not found.")
         return
         
     state = context.application.bot_data['channel_states'][chat_id]
     
+    # Randomly pick one of the 8 trends
     chosen_trend_name = random.choice(list(PREDEFINED_TRENDS.keys()))
+    
+    # Get the list of predictions for that trend
     prediction_list = PREDEFINED_TRENDS[chosen_trend_name].copy()
     
     state['current_trend_name'] = chosen_trend_name
     state['prediction_queue'] = prediction_list
     
     context.application.bot_data['channel_states'][chat_id] = state
-    logger.info(f"Chat {chat_id}: New trend selected: {chosen_trend_name}.")
-
+    logger.info(f"Chat {chat_id}: New trend selected: {chosen_trend_name}. Queue has 10 items.")
 
 async def send_prediction_job(context: ContextTypes.DEFAULT_TYPE):
+    """The job that runs every minute to send the prediction."""
     chat_id = context.job.chat_id
     
     if 'channel_states' not in context.application.bot_data or chat_id not in context.application.bot_data['channel_states']:
@@ -75,6 +84,7 @@ async def send_prediction_job(context: ContextTypes.DEFAULT_TYPE):
 
     state = context.application.bot_data['channel_states'][chat_id]
     
+    # If queue is empty, load a new trend
     if not state.get('prediction_queue'):
         await generate_new_trend_logic(context, chat_id)
         state = context.application.bot_data['channel_states'][chat_id]
@@ -88,15 +98,14 @@ async def send_prediction_job(context: ContextTypes.DEFAULT_TYPE):
         prediction = state['prediction_queue'].pop(0)
         items_left = len(state['prediction_queue'])
 
-    # --- NEW PERIOD LOGIC ---
-    # Get the current period, increment it for next time
+    # Increment Period Number
     current_period = state.get('current_period', 0)
     next_period = current_period + 1
-    state['current_period'] = next_period # Save for next loop
+    state['current_period'] = next_period
     context.application.bot_data['channel_states'][chat_id] = state
-    # ------------------------
 
     try:
+        # Build Buttons
         reaction_buttons = []
         for emoji in REACTIONS:
             reaction_buttons.append(InlineKeyboardButton(text=f"{emoji} (0)", callback_data=emoji))
@@ -113,13 +122,12 @@ async def send_prediction_job(context: ContextTypes.DEFAULT_TYPE):
         ]
         markup = InlineKeyboardMarkup(keyboard)
 
-        # --- UPDATED MESSAGE FORMAT ---
+        # Build Message
         message_caption = (
             f"📅 **Period:** {current_period}\n"
             f"📈 **Trend:** {state['current_trend_name']} (Step {10 - items_left}/10)\n\n"
             f"🤖 **Prediction:** **{prediction}**"
         )
-        # ------------------------------
         
         await context.bot.send_photo(
             chat_id=chat_id,
@@ -135,10 +143,11 @@ async def send_prediction_job(context: ContextTypes.DEFAULT_TYPE):
             stop_all_jobs_for_chat(context, chat_id)
 
 async def reaction_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles reaction button clicks."""
     query = update.callback_query
     await query.answer() 
-    clicked_emoji = query.data
-    if clicked_emoji not in REACTIONS:
+    
+    if query.data not in REACTIONS:
         return
 
     try:
@@ -157,7 +166,7 @@ async def reaction_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 match = re.search(r"\((\d+)\)", button_text)
                 count = int(match.group(1)) if match else 0
                 
-                if button_emoji == clicked_emoji:
+                if button_emoji == query.data:
                     count += 1
                     
                 new_text = f"{button_emoji} ({count})"
@@ -176,50 +185,39 @@ async def reaction_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"Failed to update reaction count: {e}")
 
 def stop_all_jobs_for_chat(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+    """Stops the bot for a specific channel."""
     bot_data = context.application.bot_data['channel_states']
     if chat_id in bot_data:
         state = bot_data[chat_id]
         if 'post_job' in state and state['post_job']:
             state['post_job'].schedule_removal()
         del bot_data[chat_id]
-        logger.info(f"All jobs and state for chat {chat_id} stopped and removed.")
+        logger.info(f"All jobs stopped for chat {chat_id}.")
         return True
     return False
 
-admin_filter = filters.User(user_id=ADMIN_USER_ID)
-
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    welcome_text = (
-        "**Welcome, Admin! (v2.8)**\n\n"
-        "**New Feature:** You can now set the starting Period Number!\n\n"
+    await update.message.reply_text(
+        "**Welcome, Admin! (v2.10)**\n\n"
+        "I am now using the **8 Real Trends**.\n\n"
         "**How to Use:**\n"
-        "`/autotrade on @channel <StartNumber>`\n"
-        "Example: `/autotrade on @mychannel 2024050`\n\n"
-        "To stop: `/autotrade off @channel`"
+        "`/autotrade on @channel <StartPeriod>`\n"
+        "Example: `/autotrade on @mychannel 2024090`\n\n"
+        "To stop: `/autotrade off @channel`",
+        parse_mode='Markdown'
     )
-    await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
 async def autotrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         command = context.args[0].lower()
         target_channel = context.args[1]
         
-        # --- NEW: Get Period Number ---
         start_period = 0
-        if command == "on":
-            if len(context.args) > 2:
-                try:
-                    start_period = int(context.args[2])
-                except ValueError:
-                    await update.message.reply_text("Error: Period number must be an integer.")
-                    return
-            else:
-                await update.message.reply_text("Usage for ON: `/autotrade on @channel <StartPeriodNumber>`", parse_mode='Markdown')
-                return
-        # ------------------------------
+        if command == "on" and len(context.args) > 2:
+            start_period = int(context.args[2])
 
-    except (IndexError, TypeError):
-        await update.message.reply_text("Usage: `/autotrade <on/off> <@channel> [PeriodNum]`", parse_mode='Markdown')
+    except (IndexError, TypeError, ValueError):
+        await update.message.reply_text("Usage: `/autotrade <on/off> <@channel> [StartPeriod]`")
         return
 
     try:
@@ -250,11 +248,11 @@ async def autotrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ Error accessing channel: {e}")
             return
 
-        await update.message.reply_text(f"Verifying...")
+        await update.message.reply_text(f"✅ Auto Trade Activated!\nStarting Period: **{start_period}**", parse_mode='Markdown')
         
         channel_states[chat_id] = {
             'prediction_queue': [],
-            'current_period': start_period  # Store the user's start number
+            'current_period': start_period
         }
         
         post_job = context.application.job_queue.run_repeating(
@@ -266,18 +264,12 @@ async def autotrade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
         channel_states[chat_id]['post_job'] = post_job
-        
-        await update.message.reply_text(f"✅ **Auto Trade Activated!**\nStarting at Period: **{start_period}**")
 
     elif command == "off":
-        if chat_id not in channel_states:
-            await update.message.reply_text("Bot is not running there.")
-            return
-            
         if stop_all_jobs_for_chat(context, chat_id):
-            await update.message.reply_text(f"🛑 **Auto Trade Deactivated** for {target_channel}")
+            await update.message.reply_text(f"🛑 Auto Trade Deactivated for {target_channel}")
         else:
-            await update.message.reply_text("Could not stop bot.")
+            await update.message.reply_text("Bot is not running there.")
 
 async def unauthorized_user_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⛔ You are not authorized.")
@@ -293,12 +285,12 @@ def main():
     application.add_handler(CommandHandler("start", start_command, filters=filters.ChatType.PRIVATE & admin_filter))
     application.add_handler(CommandHandler("help", start_command, filters=filters.ChatType.PRIVATE & admin_filter))
     application.add_handler(CommandHandler("autotrade", autotrade_command, filters=filters.ChatType.PRIVATE & admin_filter))
+    
     application.add_handler(MessageHandler(filters.ChatType.PRIVATE & (~admin_filter), unauthorized_user_handler))
     application.add_handler(CallbackQueryHandler(reaction_handler))
 
-    logger.info(f"Bot starting... (v2.8 - Period Number Feature)")
+    logger.info(f"Bot starting... (v2.10 - 8 Real Trends)")
     application.run_polling()
 
 if __name__ == '__main__':
     main()
-```
