@@ -1,0 +1,7 @@
+ffmpeg
+libopus-dev
+libmagic-dev
+libwebp-dev
+libjpeg-dev
+zlib1g-dev
+libssl-dev
