@@ -16,7 +16,7 @@ from telegram.ext import (
 # --- Configuration ---
 # Hardcoded as requested by the user.
 # WARNING: Do not share this file. Your token is secret.
-TELEGRAM_TOKEN = "7390844050:AAEB5vpDzhRelx0sf_CUGwMgLXd4ZBf61ks"
+TELEGRAM_TOKEN = "8424528396:AAHs5z4mDnFb8aA8eoW5xfSJMc-OP9X_iu4"
 
 # List of Admin IDs
 ADMIN_USER_IDS = [6837532865, 7903835201]
